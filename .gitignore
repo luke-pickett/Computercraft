@@ -1,0 +1,16 @@
+# Compiled Lua
+*.luac
+luac.out
+
+# Lua build/dependency tooling
+.luarocks/
+lua_modules/
+luacov.stats.out
+luacov.report.out
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
