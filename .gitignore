@@ -8,6 +8,9 @@ lua_modules/
 luacov.stats.out
 luacov.report.out
 
+# Local scratch examples
+examples/
+
 # Editor / OS
 .vscode/
 .idea/
