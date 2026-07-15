@@ -10,6 +10,7 @@ luacov.report.out
 
 # Local scratch examples
 examples/
+AGENTS.md
 
 # Editor / OS
 .vscode/
