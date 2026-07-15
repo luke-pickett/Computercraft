@@ -150,7 +150,30 @@ if size == nil or size < 1 or size % 1 ~= 0 then
     error("Size must be a positive whole number")
 end
 
-for y = 0, size - 1 do
+print("Depth (number or x for bedrock):")
+local depthInput = string.lower(read())
+local depth = tonumber(depthInput)
+local digToBedrock = depthInput == "x"
+
+if not digToBedrock and (depth == nil or depth < 1 or depth % 1 ~= 0) then
+    error("Depth must be a positive whole number or x")
+end
+
+local y = 0
+while digToBedrock or y < depth do
+    if y > 0 and digToBedrock then
+        moveTo({
+            x = homePosition.x,
+            y = homePosition.y - y + 1,
+            z = homePosition.z - 1,
+        })
+
+        local hasBlock, block = turtle.inspectDown()
+        if hasBlock and block.name == "minecraft:bedrock" then
+            break
+        end
+    end
+
     for x = 0, size - 1 do
         local zStart = 1
         local zEnd = size
@@ -170,6 +193,8 @@ for y = 0, size - 1 do
             })
         end
     end
+
+    y = y + 1
 end
 
 if inventoryIsFull() then
