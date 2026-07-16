@@ -1,5 +1,8 @@
 local Coordinator = require("Coordinator")
 
+local FUEL_BUFFER = 8
+local FUEL_WAIT_SECONDS = 5
+
 local function opposite(direction)
     local directions = {
         [Coordinator.North] = Coordinator.South,
@@ -32,6 +35,19 @@ local function checkFuel()
     if fuel ~= "unlimited" and fuel < 1 then
         error("Out of fuel")
     end
+end
+
+local function firstEmptySlot()
+    for slot = 1, 16 do
+        if turtle.getItemCount(slot) == 0 then
+            return slot
+        end
+    end
+    return nil
+end
+
+local function needsRefuel()
+    return not Coordinator.canReturnToOrigin(Coordinator.distanceToOrigin() + FUEL_BUFFER)
 end
 
 local function clearBlock(direction)
@@ -68,10 +84,16 @@ end
 
 local moveTo
 local unload
+local refuel
 
 local function move(direction, unloading)
-    if not unloading and inventoryIsFull() then
-        unload()
+    if not unloading then
+        if inventoryIsFull() then
+            unload()
+        end
+        if needsRefuel() then
+            refuel()
+        end
     end
 
     for _ = 1, 5 do
@@ -133,6 +155,41 @@ unload = function()
             if not turtle.drop() then
                 error("Inventory behind turtle is full or missing")
             end
+        end
+    end
+
+    turtle.select(selectedSlot)
+    moveTo(resumePosition, true)
+    if not Coordinator.face(resumeDirection) then
+        error("Unable to restore direction")
+    end
+end
+
+refuel = function()
+    local resumePosition = copyPosition(Coordinator.Pos)
+    local resumeDirection = Coordinator.LookDirection
+    local selectedSlot = turtle.getSelectedSlot()
+
+    moveTo(homePosition, true)
+
+    local homeToResume = Coordinator.Origin:GetMDist(resumePosition)
+    local targetFuel = homeToResume * 2 + FUEL_BUFFER
+
+    while turtle.getFuelLevel() ~= "unlimited"
+            and turtle.getFuelLevel() < targetFuel do
+        local slot = firstEmptySlot()
+        if slot then
+            turtle.select(slot)
+        end
+
+        local refueled = false
+        if turtle.suckUp() then
+            refueled = turtle.refuel()
+        end
+
+        if not refueled then
+            print("Waiting for fuel above the turtle...")
+            sleep(FUEL_WAIT_SECONDS)
         end
     end
 

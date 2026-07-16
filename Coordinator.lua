@@ -93,4 +93,19 @@ function Coordinator.moveDir(dir)
     return true
 end
 
+Coordinator.Origin = Vector.new(0, 0, 0)
+
+function Coordinator.distanceToOrigin()
+    return Coordinator.Pos:GetMDist(Coordinator.Origin)
+end
+
+function Coordinator.canReturnToOrigin(reserve)
+    reserve = reserve or 0
+    local fuel = turtle.getFuelLevel()
+    if fuel == "unlimited" then
+        return true
+    end
+    return fuel - Coordinator.distanceToOrigin() >= reserve
+end
+
 return Coordinator
