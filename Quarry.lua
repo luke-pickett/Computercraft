@@ -1,259 +1,283 @@
 local Coordinator = require("Coordinator")
+local Vector = require("Vector")
 
-local FUEL_BUFFER = 8
+local FUEL_RESERVE = 4
 local FUEL_WAIT_SECONDS = 5
+local UNLOAD_WAIT_SECONDS = 2
+local LAST_SLOT = 16
+local MOVE_ATTEMPTS = 8
 
-local function opposite(direction)
-    local directions = {
-        [Coordinator.North] = Coordinator.South,
-        [Coordinator.East] = Coordinator.West,
-        [Coordinator.South] = Coordinator.North,
-        [Coordinator.West] = Coordinator.East,
-    }
-    return directions[direction]
+local args = {...}
+
+local function positiveInteger(value, name)
+    if value < 1 or value % 1 ~= 0 then
+        error(name .. " must be a positive integer")
+    end
 end
 
-local function copyPosition(position)
-    return {
-        x = position.x,
-        y = position.y,
-        z = position.z,
-    }
+local function parseArgs()
+    local width = tonumber(args[1])
+    if width == nil then
+        error("Quarry requires a width argument")
+    end
+
+    local length = tonumber(args[2]) or width
+    local depth = tonumber(args[3])
+
+    positiveInteger(width, "Width")
+    if args[2] ~= nil and tonumber(args[2]) == nil then
+        error("Length must be a positive integer")
+    end
+    positiveInteger(length, "Length")
+    if args[3] ~= nil and depth == nil then
+        error("Depth must be a positive integer")
+    end
+    if depth ~= nil then
+        positiveInteger(depth, "Depth")
+    end
+
+    return width, length, depth, depth == nil
 end
 
-local function inventoryIsFull()
-    for slot = 1, 16 do
-        if turtle.getItemSpace(slot) > 0 then
-            return false
+local function copyVector(value)
+    return Vector.new(value.x, value.y, value.z)
+end
+
+local function actionsFor(dir)
+    if dir == Coordinator.Up then
+        return turtle.detectUp, turtle.digUp, turtle.attackUp
+    elseif dir == Coordinator.Down then
+        return turtle.detectDown, turtle.digDown, turtle.attackDown
+    end
+
+    if not Coordinator.face(dir) then
+        error("Unable to face " .. tostring(dir))
+    end
+    return turtle.detect, turtle.dig, turtle.attack
+end
+
+local function digToward(dir)
+    local detect, dig, attack = actionsFor(dir)
+    local failures = 0
+
+    while detect() do
+        if dig() then
+            failures = 0
+        else
+            attack()
+            failures = failures + 1
+            if failures >= MOVE_ATTEMPTS then
+                return false
+            end
+            sleep(0.2)
         end
     end
+
     return true
 end
 
-local function checkFuel()
-    local fuel = turtle.getFuelLevel()
-    if fuel ~= "unlimited" and fuel < 1 then
-        error("Out of fuel")
-    end
-end
-
-local function firstEmptySlot()
-    for slot = 1, 16 do
-        if turtle.getItemCount(slot) == 0 then
-            return slot
-        end
-    end
-    return nil
-end
-
-local function needsRefuel()
-    return not Coordinator.canReturnToOrigin(Coordinator.distanceToOrigin() + FUEL_BUFFER)
-end
-
-local function clearBlock(direction)
-    local detect
-    local dig
-    local attack
-
-    if direction == Coordinator.Up then
-        detect = turtle.detectUp
-        dig = turtle.digUp
-        attack = turtle.attackUp
-    elseif direction == Coordinator.Down then
-        detect = turtle.detectDown
-        dig = turtle.digDown
-        attack = turtle.attackDown
-    else
-        if not Coordinator.face(direction) then
-            error("Unable to turn")
-        end
-        detect = turtle.detect
-        dig = turtle.dig
-        attack = turtle.attack
-    end
-
-    while detect() do
-        if not dig() then
-            attack()
-            if detect() then
-                error("Unable to clear block")
-            end
-        end
-    end
-end
-
-local moveTo
-local unload
-local refuel
-
-local function move(direction, unloading)
-    if not unloading then
-        if inventoryIsFull() then
-            unload()
-        end
-        if needsRefuel() then
-            refuel()
-        end
-    end
-
-    for _ = 1, 5 do
-        checkFuel()
-        clearBlock(direction)
-        if Coordinator.moveDir(direction) then
+local function step(dir)
+    for _ = 1, MOVE_ATTEMPTS do
+        digToward(dir)
+        if Coordinator.moveDir(dir) then
             return
         end
 
-        if direction == Coordinator.Up then
-            turtle.attackUp()
-        elseif direction == Coordinator.Down then
-            turtle.attackDown()
-        else
-            turtle.attack()
-        end
+        local _, _, attack = actionsFor(dir)
+        attack()
+        sleep(0.2)
     end
 
-    error("Unable to move")
+    error("Unable to move " .. tostring(dir))
 end
 
-moveTo = function(target, unloading)
+local function moveTo(target)
     while Coordinator.Pos.x < target.x do
-        move(Coordinator.East, unloading)
+        step(Coordinator.East)
     end
     while Coordinator.Pos.x > target.x do
-        move(Coordinator.West, unloading)
+        step(Coordinator.West)
     end
     while Coordinator.Pos.z < target.z do
-        move(Coordinator.South, unloading)
+        step(Coordinator.South)
     end
     while Coordinator.Pos.z > target.z do
-        move(Coordinator.North, unloading)
+        step(Coordinator.North)
     end
     while Coordinator.Pos.y < target.y do
-        move(Coordinator.Up, unloading)
+        step(Coordinator.Up)
     end
     while Coordinator.Pos.y > target.y do
-        move(Coordinator.Down, unloading)
+        step(Coordinator.Down)
     end
 end
 
-local homePosition = copyPosition(Coordinator.Pos)
-local homeDirection = Coordinator.LookDirection
+local function bedrockBelow()
+    local found, block = turtle.inspectDown()
+    return found and block.name == "minecraft:bedrock"
+end
 
-unload = function()
-    local resumePosition = copyPosition(Coordinator.Pos)
-    local resumeDirection = Coordinator.LookDirection
-    local selectedSlot = turtle.getSelectedSlot()
+local function lastSlotFull()
+    return turtle.getItemCount(LAST_SLOT) > 0
+end
 
-    moveTo(homePosition, true)
-    if not Coordinator.face(opposite(homeDirection)) then
-        error("Unable to turn toward inventory")
+local function lowFuel()
+    local fuel = turtle.getFuelLevel()
+    return fuel ~= "unlimited" and fuel <= Coordinator.distanceToOrigin() + FUEL_RESERVE
+end
+
+local function goHome()
+    moveTo(Coordinator.Origin)
+end
+
+local function selectEmptySlot()
+    for slot = 1, LAST_SLOT do
+        if turtle.getItemCount(slot) == 0 then
+            turtle.select(slot)
+            return true
+        end
+    end
+    return false
+end
+
+local function refuelAtHome(requiredFuel)
+    if turtle.getFuelLevel() == "unlimited" then
+        return
     end
 
-    for slot = 1, 16 do
+    while turtle.getFuelLevel() < requiredFuel do
+        if not selectEmptySlot() then
+            error("No empty inventory slot available for fuel")
+        end
+
+        if turtle.suckUp() then
+            if not turtle.refuel() then
+                error("Fuel chest contains a non-fuel item")
+            end
+        else
+            print("Waiting for fuel above the origin")
+            sleep(FUEL_WAIT_SECONDS)
+        end
+    end
+end
+
+local function restoreResume(resumePos, resumeDir)
+    moveTo(resumePos)
+    if not Coordinator.face(resumeDir) then
+        error("Unable to restore heading")
+    end
+end
+
+local function refuel()
+    local resumePos = copyVector(Coordinator.Pos)
+    local resumeDir = Coordinator.LookDirection
+    local resumeDistance = resumePos:GetMDist(Coordinator.Origin)
+    local selectedSlot = turtle.getSelectedSlot()
+
+    goHome()
+    refuelAtHome(2 * resumeDistance + FUEL_RESERVE + 1)
+    turtle.select(selectedSlot)
+    restoreResume(resumePos, resumeDir)
+end
+
+local function unload()
+    local resumePos = copyVector(Coordinator.Pos)
+    local resumeDir = Coordinator.LookDirection
+    local resumeDistance = resumePos:GetMDist(Coordinator.Origin)
+    local selectedSlot = turtle.getSelectedSlot()
+
+    goHome()
+    if not Coordinator.face(Coordinator.South) then
+        error("Unable to face the deposit chest")
+    end
+
+    for slot = 1, LAST_SLOT do
         turtle.select(slot)
         while turtle.getItemCount(slot) > 0 do
             if not turtle.drop() then
-                error("Inventory behind turtle is full or missing")
+                print("Waiting for space in the deposit chest")
+                sleep(UNLOAD_WAIT_SECONDS)
             end
         end
     end
 
+    if not Coordinator.face(Coordinator.North) then
+        error("Unable to face North")
+    end
+    refuelAtHome(2 * resumeDistance + FUEL_RESERVE + 1)
     turtle.select(selectedSlot)
-    moveTo(resumePosition, true)
-    if not Coordinator.face(resumeDirection) then
-        error("Unable to restore direction")
+    restoreResume(resumePos, resumeDir)
+end
+
+local function handleIncidents()
+    if lastSlotFull() then
+        unload()
+    end
+    if lowFuel() then
+        refuel()
     end
 end
 
-refuel = function()
-    local resumePosition = copyPosition(Coordinator.Pos)
-    local resumeDirection = Coordinator.LookDirection
-    local selectedSlot = turtle.getSelectedSlot()
+local function miningStep(dir)
+    handleIncidents()
+    step(dir)
+end
 
-    moveTo(homePosition, true)
+local function finish(homePos)
+    goHome()
+    if not Coordinator.face(Coordinator.North) then
+        error("Unable to face North")
+    end
+    Coordinator.Pos = copyVector(homePos)
+end
 
-    local homeToResume = Coordinator.Origin:GetMDist(resumePosition)
-    local targetFuel = homeToResume * 2 + FUEL_BUFFER
+local width, length, depth, digToBedrock = parseArgs()
+local homePos = copyVector(Coordinator.Pos)
+local homeDir = Coordinator.LookDirection
+local layer = 1
+local hitBedrock = false
 
-    while turtle.getFuelLevel() ~= "unlimited"
-            and turtle.getFuelLevel() < targetFuel do
-        local slot = firstEmptySlot()
-        if slot then
-            turtle.select(slot)
-        end
+miningStep(Coordinator.Down)
 
-        local refueled = false
-        if turtle.suckUp() then
-            refueled = turtle.refuel()
-        end
-
-        if not refueled then
-            print("Waiting for fuel above the turtle...")
-            sleep(FUEL_WAIT_SECONDS)
+while true do
+    local targets = {}
+    for col = 0, width - 1 do
+        if col % 2 == 0 then
+            for row = 0, length - 1 do
+                targets[#targets + 1] = Vector.new(col, -layer, row)
+            end
+        else
+            for row = length - 1, 0, -1 do
+                targets[#targets + 1] = Vector.new(col, -layer, row)
+            end
         end
     end
 
-    turtle.select(selectedSlot)
-    moveTo(resumePosition, true)
-    if not Coordinator.face(resumeDirection) then
-        error("Unable to restore direction")
+    if layer % 2 == 0 then
+        local reversed = {}
+        for index = #targets, 1, -1 do
+            reversed[#reversed + 1] = targets[index]
+        end
+        targets = reversed
     end
-end
 
-print("Quarry size:")
-local size = tonumber(read())
-
-if size == nil or size < 1 or size % 1 ~= 0 then
-    error("Size must be a positive whole number")
-end
-
-print("Depth (number or x for bedrock):")
-local depthInput = string.lower(read())
-local depth = tonumber(depthInput)
-local digToBedrock = depthInput == "x"
-
-if not digToBedrock and (depth == nil or depth < 1 or depth % 1 ~= 0) then
-    error("Depth must be a positive whole number or x")
-end
-
-local y = 0
-while digToBedrock or y < depth do
-    if y > 0 and digToBedrock then
-        moveTo({
-            x = homePosition.x,
-            y = homePosition.y - y + 1,
-            z = homePosition.z - 1,
-        })
-
-        local hasBlock, block = turtle.inspectDown()
-        if hasBlock and block.name == "minecraft:bedrock" then
-            break
+    for _, target in ipairs(targets) do
+        if Coordinator.Pos ~= target then
+            handleIncidents()
+            moveTo(target)
+        end
+        if bedrockBelow() then
+            hitBedrock = true
         end
     end
 
-    for x = 0, size - 1 do
-        local zStart = 1
-        local zEnd = size
-        local zStep = 1
-
-        if x % 2 == 1 then
-            zStart = size
-            zEnd = 1
-            zStep = -1
-        end
-
-        for z = zStart, zEnd, zStep do
-            moveTo({
-                x = homePosition.x + x,
-                y = homePosition.y - y,
-                z = homePosition.z - z,
-            })
-        end
+    local completedDepth = not digToBedrock and layer >= depth
+    if hitBedrock or completedDepth then
+        break
     end
 
-    y = y + 1
+    miningStep(Coordinator.Down)
+    layer = layer + 1
 end
 
-if inventoryIsFull() then
-    unload()
-end
+finish(homePos)
