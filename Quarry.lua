@@ -180,13 +180,9 @@ local function refuel()
     restoreResume(resumePos, resumeDir)
 end
 
-local function unload()
-    local resumePos = copyVector(Coordinator.Pos)
-    local resumeDir = Coordinator.LookDirection
-    local resumeDistance = resumePos:GetMDist(Coordinator.Origin)
+local function dumpInventory()
     local selectedSlot = turtle.getSelectedSlot()
 
-    goHome()
     if not Coordinator.face(Coordinator.South) then
         error("Unable to face the deposit chest")
     end
@@ -204,8 +200,17 @@ local function unload()
     if not Coordinator.face(Coordinator.North) then
         error("Unable to face North")
     end
-    refuelAtHome(2 * resumeDistance + FUEL_RESERVE + 1)
     turtle.select(selectedSlot)
+end
+
+local function unload()
+    local resumePos = copyVector(Coordinator.Pos)
+    local resumeDir = Coordinator.LookDirection
+    local resumeDistance = resumePos:GetMDist(Coordinator.Origin)
+
+    goHome()
+    dumpInventory()
+    refuelAtHome(2 * resumeDistance + FUEL_RESERVE + 1)
     restoreResume(resumePos, resumeDir)
 end
 
@@ -225,9 +230,7 @@ end
 
 local function finish(homePos)
     goHome()
-    if not Coordinator.face(Coordinator.North) then
-        error("Unable to face North")
-    end
+    dumpInventory()
     Coordinator.Pos = copyVector(homePos)
 end
 
