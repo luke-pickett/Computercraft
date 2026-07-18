@@ -10,6 +10,7 @@ luacov.report.out
 
 # Local scratch examples
 examples/
+mim_index.tbl
 AGENTS.md
 
 # Editor / OS
