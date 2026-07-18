@@ -6,7 +6,7 @@ local FUEL_WAIT_SECONDS = 5
 local UNLOAD_WAIT_SECONDS = 2
 local LAST_SLOT = 16
 local MOVE_ATTEMPTS = 8
-local OPERATION_FORWARD_OFFSET = 2
+local QUARRY_START_DISTANCE = 2
 
 local args = {...}
 
@@ -241,7 +241,7 @@ local homeDir = Coordinator.LookDirection
 local layer = 1
 local hitBedrock = false
 
-for _ = 1, OPERATION_FORWARD_OFFSET do
+for _ = 1, QUARRY_START_DISTANCE do
     miningStep(Coordinator.North)
 end
 miningStep(Coordinator.Down)
@@ -251,11 +251,11 @@ while true do
     for col = 0, width - 1 do
         if col % 2 == 0 then
             for row = 0, length - 1 do
-                targets[#targets + 1] = Vector.new(col, -layer, row - OPERATION_FORWARD_OFFSET)
+                targets[#targets + 1] = Vector.new(col, -layer, -QUARRY_START_DISTANCE - row)
             end
         else
             for row = length - 1, 0, -1 do
-                targets[#targets + 1] = Vector.new(col, -layer, row - OPERATION_FORWARD_OFFSET)
+                targets[#targets + 1] = Vector.new(col, -layer, -QUARRY_START_DISTANCE - row)
             end
         end
     end

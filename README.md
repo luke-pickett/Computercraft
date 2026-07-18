@@ -16,7 +16,8 @@ Omitting `z` mines until bedrock.
 Start the turtle at the top of the shaft facing North. Keep that origin block
 clear, put a fuel chest directly above it, and put the deposit chest directly
 behind it to the South. The turtle moves two blocks forward (North) before it
-starts digging. From there, the quarry grows East and South.
+starts digging, leaving one clear block between the origin and the quarry. From
+there, the quarry grows East and North, away from the origin.
 
 ## License
 
