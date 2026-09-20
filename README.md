@@ -7,6 +7,57 @@ Lua programs for [CC: Tweaked](https://tweaked.cc/) / ComputerCraft.
 Copy a program onto a computer or turtle in-game, or clone this repo into the
 world's `computercraft/computer/<id>` directory.
 
+### Tree Chopper
+
+Copy `TreeChopper.lua` onto a chopping or mining turtle. Start at sapling height,
+immediately behind the bottom-right sapling, facing into the plot. The 8x8 plot
+extends eight blocks forward and eight blocks left, counting that first sapling.
+
+```text
+        front
+SSSSSSSS
+SSSSSSSS
+SSSSSSSS
+SSSSSSSS
+SSSSSSSS
+SSSSSSSS
+SSSSSSSS
+SSSSSSSS
+.......T  T faces up in this diagram
+.......C  optional deposit chest
+```
+
+Put coal or other turtle fuel in slot 1 and matching saplings in slot 2. Keep
+slots 3-16 empty for cargo. Supply up to 64 saplings for a fully grown plot.
+Use one species throughout; the default is oak. Keep the row between the plot
+and chest clear, including the space one block above it, for the return route.
+
+```text
+TreeChopper once
+TreeChopper loop 60
+TreeChopper loop 60 minecraft:birch_sapling
+```
+
+With no arguments it runs once. `loop` repeats with the specified delay in
+seconds after each pass. The turtle travels one block above saplings, cuts
+straight trunks from bottom to top, replants empty cells, and returns to its
+original position and heading. Ungrown saplings are left in place. Leaves in its
+path are cleared. A chest or other inventory directly behind home receives
+cargo after each pass; fuel and the configured sapling species are retained.
+
+This handles ordinary single-column trees, not branching large oaks or giant
+2x2 trees. It does not clear the whole canopy or collect every dropped sapling.
+Dense planting may prevent some saplings from growing. Provide suitable soil,
+light, and clearance. For predictable straight trunks, use birch.
+
+Fuel is consumed only from slot 1. If fuel, saplings, or cargo space run out,
+the program waits for you to refill or empty the turtle where it is. A full
+deposit chest also pauses unloading. Supply enough fuel and saplings for long
+runs; there is no automatic supply-chest refill or mid-pass unloading.
+Unexpected solid obstacles stop the program. Progress is not saved: after a
+restart or interruption, manually return the turtle to the original starting
+position and heading before running it again.
+
 ### Quarry
 
 Run `Quarry <x> [y] [z]`, where `x` is the width, `y` is the optional length,
